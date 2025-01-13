@@ -17,13 +17,23 @@ app.use((req, res, next) => {
 });
 
 // Database setup
-const db = new sqlite3.Database('./content.db', (err) => {
+const db = new sqlite3.Database('./digital_signage.db', (err) => {
   if (err) console.error('Failed to connect to DB:', err.message);
   else console.log('Connected to SQLite database.');
 });
 
-// Create table
-db.run(`CREATE TABLE IF NOT EXISTS content (id INTEGER PRIMARY KEY, data TEXT)`);
+// Create tables if they don't exist
+db.run(`CREATE TABLE IF NOT EXISTS screens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  screen_id TEXT NOT NULL UNIQUE
+)`);
+
+db.run(`CREATE TABLE IF NOT EXISTS content (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  screen_id INTEGER NOT NULL,
+  data TEXT,
+  FOREIGN KEY (screen_id) REFERENCES screens (id)
+)`);
 
 // Close DB on exit
 process.on('SIGINT', () => {
@@ -34,17 +44,34 @@ process.on('SIGINT', () => {
   });
 });
 
-// API endpoints
+// API Endpoints
 
-// Save Content
-app.post('/save-content', (req, res) => {
-  const { data } = req.body;
+// Register Screen
+app.post('/register-screen', (req, res) => {
+  const { screenId } = req.body;
 
-  if (!data || typeof data !== 'string') {
-    return res.status(400).json({ message: 'Invalid data. Expected a non-empty string.' });
+  if (!screenId || typeof screenId !== 'string') {
+    return res.status(400).json({ message: 'Invalid screenId. Expected a non-empty string.' });
   }
 
-  db.run('INSERT INTO content (data) VALUES (?)', [data], function (err) {
+  db.run('INSERT INTO screens (screen_id) VALUES (?)', [screenId], function (err) {
+    if (err) {
+      console.error('Error registering screen:', err.message);
+      return res.status(500).json({ message: 'Failed to register screen.' });
+    }
+    res.status(200).json({ message: 'Screen registered successfully', screenId: screenId });
+  });
+});
+
+// Save Content for a Screen
+app.post('/save-content', (req, res) => {
+  const { screenId, data } = req.body;
+
+  if (!screenId || !data || typeof data !== 'string') {
+    return res.status(400).json({ message: 'Invalid data. Expected screenId and non-empty string data.' });
+  }
+
+  db.run('INSERT INTO content (screen_id, data) VALUES (?, ?)', [screenId, data], function (err) {
     if (err) {
       console.error('Error saving content:', err.message);
       return res.status(500).json({ message: 'Failed to save content.' });
@@ -53,7 +80,25 @@ app.post('/save-content', (req, res) => {
   });
 });
 
-// Fetch Contents
+// Fetch Content for a Specific Screen
+app.get('/content/:screenId', (req, res) => {
+  const { screenId } = req.params;
+
+  db.all('SELECT * FROM content WHERE screen_id = ?', [screenId], (err, rows) => {
+    if (err) {
+      console.error('Error fetching content:', err.message);
+      return res.status(500).json({ message: 'Failed to fetch content. Please try again later.' });
+    }
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'No content found for this screen.' });
+    }
+
+    res.status(200).json(rows);
+  });
+});
+
+// Fetch All Contents (optional, for testing)
 app.get('/contents', (req, res) => {
   db.all('SELECT * FROM content', [], (err, rows) => {
     if (err) {
