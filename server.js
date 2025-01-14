@@ -2,6 +2,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
+const WebSocket = require('ws');
 
 const app = express();
 const port = 5000;
@@ -10,11 +11,14 @@ const port = 5000;
 app.use(bodyParser.json());
 app.use(cors());
 
+//-------------------------------------------------------------
 // Logger Middleware
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url} - ${new Date().toISOString()}`);
   next();
 });
+
+//-------------------------------------------------------------
 
 // Database setup
 const db = new sqlite3.Database('./digital_signage.db', (err) => {
@@ -22,6 +26,32 @@ const db = new sqlite3.Database('./digital_signage.db', (err) => {
   else console.log('Connected to SQLite database.');
 });
 
+//-----------------------------------------------------------------------
+
+// WebSocket server setup
+const wss = new WebSocket.Server({ port: 8080 });
+
+wss.on('connection', (ws) => {
+  console.log('Client connected');
+  
+  // Handle messages from the client
+  ws.on('message', (message) => {
+    console.log(`Received: ${message}`);
+    
+    // Broadcast the received message to all connected clients
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  });
+
+  ws.on('close', () => {
+    console.log('Client disconnected');
+  });
+});
+
+//---------------------------------------------------------
 // Create tables if they don't exist
 db.run(`CREATE TABLE IF NOT EXISTS screens (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,6 +73,8 @@ process.on('SIGINT', () => {
     process.exit(0);
   });
 });
+
+//-----------------------------------------------------------
 
 // API Endpoints
 
