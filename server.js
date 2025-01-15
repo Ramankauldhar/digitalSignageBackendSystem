@@ -93,6 +93,29 @@ app.post('/register-screen', (req, res) => {
   });
 });
 
+// Check if a Screen is Registered
+app.get('/check-screen/:screenId', (req, res) => {
+  const { screenId } = req.params;
+
+  if (!screenId) {
+    return res.status(400).json({ message: 'ScreenId is required.' });
+  }
+
+  db.get('SELECT * FROM screens WHERE screen_id = ?', [screenId], (err, row) => {
+    if (err) {
+      console.error('Error checking screen registration:', err.message);
+      return res.status(500).json({ message: 'Server error. Please try again later.' });
+    }
+
+    if (!row) {
+      return res.status(404).json({ registered: false, message: 'Screen is not registered.' });
+    }
+
+    res.status(200).json({ registered: true, message: 'Screen is registered.', screen: row });
+  });
+});
+
+
 
 // Save Content for a Screen
 app.post('/save-content', (req, res) => {
