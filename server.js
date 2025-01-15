@@ -77,8 +77,6 @@ process.on('SIGINT', () => {
 //-----------------------------------------------------------
 
 // API Endpoints
-
-// Register Screen
 app.post('/register-screen', (req, res) => {
   const { screenId } = req.body;
 
@@ -94,6 +92,7 @@ app.post('/register-screen', (req, res) => {
     res.status(200).json({ message: 'Screen registered successfully', screenId: screenId });
   });
 });
+
 
 // Save Content for a Screen
 app.post('/save-content', (req, res) => {
@@ -140,5 +139,47 @@ app.get('/contents', (req, res) => {
     res.status(200).json(rows);
   });
 });
+
+// Update Content for a Specific Screen
+app.put('/update-content/:id', (req, res) => {
+  const { id } = req.params;
+  const { data } = req.body;
+
+  if (!data || typeof data !== 'string') {
+    return res.status(400).json({ message: 'Invalid data. Expected a non-empty string.' });
+  }
+
+  db.run('UPDATE content SET data = ? WHERE id = ?', [data, id], function (err) {
+    if (err) {
+      console.error('Error updating content:', err.message);
+      return res.status(500).json({ message: 'Failed to update content.' });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({ message: 'Content not found.' });
+    }
+
+    res.status(200).json({ message: 'Content updated successfully.' });
+  });
+});
+
+// Delete Content for a Specific Screen
+app.delete('/delete-content/:id', (req, res) => {
+  const { id } = req.params;
+
+  db.run('DELETE FROM content WHERE id = ?', [id], function (err) {
+    if (err) {
+      console.error('Error deleting content:', err.message);
+      return res.status(500).json({ message: 'Failed to delete content.' });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({ message: 'Content not found.' });
+    }
+
+    res.status(200).json({ message: 'Content deleted successfully.' });
+  });
+});
+
 
 app.listen(port, () => console.log(`Server running on http://localhost:${port}`));
