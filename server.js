@@ -36,15 +36,22 @@ wss.on('connection', (ws) => {
   
   // Handle messages from the client
   ws.on('message', (message) => {
-    console.log(`Received: ${message}`);
-    
-    // Broadcast the received message to all connected clients
-    wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
+    try {
+      const parsedMessage = JSON.parse(message);
+      if (parsedMessage.type === 'subscribe' && parsedMessage.screenId) {
+        ws.screenId = parsedMessage.screenId;
       }
-    });
+    } catch (err) {
+      console.error('Invalid JSON received from client.');
+    }
   });
+  
+  // Only send relevant updates
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN && client.screenId === screenId) {
+      client.send(JSON.stringify(contentUpdate));
+    }
+  });  
 
   ws.on('close', () => {
     console.log('Client disconnected');
@@ -60,7 +67,7 @@ db.run(`CREATE TABLE IF NOT EXISTS screens (
 
 db.run(`CREATE TABLE IF NOT EXISTS content (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  screen_id INTEGER NOT NULL,
+  screen_id TEXT NOT NULL,
   data TEXT,
   FOREIGN KEY (screen_id) REFERENCES screens (id)
 )`);
@@ -77,19 +84,45 @@ process.on('SIGINT', () => {
 //-----------------------------------------------------------
 
 // API Endpoints
+//register a new screen
 app.post('/register-screen', (req, res) => {
   const { screenId } = req.body;
 
-  if (!screenId || typeof screenId !== 'string') {
+  if (!screenId || typeof screenId !== 'string' || screenId.trim() === '') {
     return res.status(400).json({ message: 'Invalid screenId. Expected a non-empty string.' });
   }
 
-  db.run('INSERT INTO screens (screen_id) VALUES (?)', [screenId], function (err) {
+  // Check if the screenId already exists
+  db.get('SELECT screen_id FROM screens WHERE screen_id = ?', [screenId], (err, row) => {
     if (err) {
-      console.error('Error registering screen:', err.message);
-      return res.status(500).json({ message: 'Failed to register screen.' });
+      console.error('Database error while checking screen:', err.message);
+      return res.status(500).json({ message: 'Internal server error. Please try again later.' });
     }
-    res.status(200).json({ message: 'Screen registered successfully', screenId: screenId });
+    if (row) {
+      return res.status(409).json({ message: 'Screen ID already registered.', screenId });
+    }
+    // Insert the new screen if it doesn't exist
+    db.run('INSERT INTO screens (screen_id) VALUES (?)', [screenId], function (err) {
+      if (err) {
+        console.error('Error registering screen:', err.message);
+        return res.status(500).json({ message: 'Failed to register screen due to a database error.' });
+      }
+      console.log(`Screen registered: ${screenId}`);
+
+      // Broadcast screen registration to all WebSocket clients
+      const screenRegisteredMessage = {
+        type: 'new-screen',
+        screenId,
+      };
+
+      wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify(screenRegisteredMessage));
+        }
+      });
+
+      res.status(201).json({ message: 'Screen registered successfully.', screenId });
+    });
   });
 });
 
@@ -130,6 +163,17 @@ app.post('/save-content', (req, res) => {
       console.error('Error saving content:', err.message);
       return res.status(500).json({ message: 'Failed to save content.' });
     }
+    // Broadcast the new content to all WebSocket clients
+    const contentUpdate = {
+      type: 'new-content',
+      screenId: screenId,
+      data: data,
+    };
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(contentUpdate));
+      }
+    });
     res.status(200).json({ id: this.lastID, message: 'Content saved successfully.' });
   });
 });
@@ -143,11 +187,9 @@ app.get('/content/:screenId', (req, res) => {
       console.error('Error fetching content:', err.message);
       return res.status(500).json({ message: 'Failed to fetch content. Please try again later.' });
     }
-
     if (rows.length === 0) {
       return res.status(404).json({ message: 'No content found for this screen.' });
     }
-
     res.status(200).json(rows);
   });
 });
@@ -177,11 +219,20 @@ app.put('/update-content/:id', (req, res) => {
       console.error('Error updating content:', err.message);
       return res.status(500).json({ message: 'Failed to update content.' });
     }
-
     if (this.changes === 0) {
       return res.status(404).json({ message: 'Content not found.' });
     }
-
+    // Broadcast updated content to all WebSocket clients
+    const contentUpdate = {
+      type: 'update-content',
+      id: id,
+      data: data,
+    };
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(contentUpdate));
+      }
+    });
     res.status(200).json({ message: 'Content updated successfully.' });
   });
 });
@@ -199,7 +250,16 @@ app.delete('/delete-content/:id', (req, res) => {
     if (this.changes === 0) {
       return res.status(404).json({ message: 'Content not found.' });
     }
-
+    // Broadcast content deletion to all WebSocket clients
+    const contentDelete = {
+      type: 'delete-content',
+      id: id,
+    };
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(contentDelete));
+      }
+    });
     res.status(200).json({ message: 'Content deleted successfully.' });
   });
 });
