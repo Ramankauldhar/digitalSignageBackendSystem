@@ -26,38 +26,6 @@ const db = new sqlite3.Database('./digital_signage.db', (err) => {
   else console.log('Connected to SQLite database.');
 });
 
-//-----------------------------------------------------------------------
-
-// WebSocket server setup
-const wss = new WebSocket.Server({ port: 8080 });
-
-wss.on('connection', (ws) => {
-  console.log('Client connected');
-  
-  // Handle messages from the client
-  ws.on('message', (message) => {
-    try {
-      const parsedMessage = JSON.parse(message);
-      if (parsedMessage.type === 'subscribe' && parsedMessage.screenId) {
-        ws.screenId = parsedMessage.screenId;
-      }
-    } catch (err) {
-      console.error('Invalid JSON received from client.');
-    }
-  });
-  
-  // Only send relevant updates
-  wss.clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN && client.screenId === screenId) {
-      client.send(JSON.stringify(contentUpdate));
-    }
-  });  
-
-  ws.on('close', () => {
-    console.log('Client disconnected');
-  });
-});
-
 //---------------------------------------------------------
 // Create tables if they don't exist
 db.run(`CREATE TABLE IF NOT EXISTS screens (
@@ -72,25 +40,102 @@ db.run(`CREATE TABLE IF NOT EXISTS content (
   FOREIGN KEY (screen_id) REFERENCES screens (id)
 )`);
 
+//-----------------------------------------------------------------------
+
+// WebSocket server setup
+//set up of an HTTP sever to handle express and websocket connections
+const server = app.listen(port, () => {
+  console.log(`Server running on http://localhost:${port}`);
+});
+
+// Create WebSocket server and associate it with the HTTP server
+const wss = new WebSocket.Server({ server });
+
+// Store connected clients by screenId (Map allows efficient lookup)
+const clients = new Map();
+
+// Handling WebSocket connections
+wss.on('connection', (ws) => {
+  console.log('New client connected');
+
+  // Handle incoming messages from clients
+  ws.on('message', (message) => {
+    // If message is a Buffer, convert to string before parsing
+    if (Buffer.isBuffer(message)) {
+      message = message.toString('utf8');
+    }
+
+    console.log('Received:', message);
+
+    try {
+      const parsedMessage = JSON.parse(message);
+
+      // If a screenId is provided, store it in the WebSocket object
+      if (parsedMessage.screenId) {
+        ws.screenId = parsedMessage.screenId;
+        clients.set(ws.screenId, ws); // Store WebSocket client by screenId
+      }
+
+      // Broadcast the message to all clients (except sender)
+      clients.forEach((client, screenId) => {
+        if (client !== ws && client.readyState === WebSocket.OPEN) {
+          client.send(message);
+        }
+      });
+    } catch (err) {
+      console.error('Invalid message format:', message);
+      ws.send(JSON.stringify({ type: 'error', message: 'Invalid message format' }));
+    }
+  });
+
+  ws.on('error', (err) => {
+    console.error('WebSocket Error:', err);
+  });
+
+  // Handle WebSocket disconnection
+  ws.on('close', () => {
+    if (ws.screenId) {
+      clients.delete(ws.screenId); // Remove the client from the map
+      console.log('Client disconnected');
+    }
+  });
+
+  // Send a confirmation message when the client connects
+  ws.send(JSON.stringify({ message: 'WebSocket Server Connected' }));
+});
+
 // Close DB on exit
 process.on('SIGINT', () => {
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.close();
+    }
+  });
+
   db.close((err) => {
     if (err) console.error('Error closing DB connection:', err.message);
     else console.log('Database connection closed.');
     process.exit(0);
   });
 });
-
 //-----------------------------------------------------------
 
 // API Endpoints
+
+// Simple Express route to test the backend
+app.get('/', (req, res) => {
+  res.send('Digital Signage Content Management System');
+});
+
 //register a new screen
 app.post('/register-screen', (req, res) => {
-  const { screenId } = req.body;
-
+  let { screenId } = req.body;
+  
   if (!screenId || typeof screenId !== 'string' || screenId.trim() === '') {
     return res.status(400).json({ message: 'Invalid screenId. Expected a non-empty string.' });
   }
+  
+  screenId = screenId.trim(); // Ensure no leading/trailing spaces
 
   // Check if the screenId already exists
   db.get('SELECT screen_id FROM screens WHERE screen_id = ?', [screenId], (err, row) => {
@@ -141,14 +186,13 @@ app.get('/check-screen/:screenId', (req, res) => {
     }
 
     if (!row) {
-      return res.status(404).json({ registered: false, message: 'Screen is not registered.' });
+      // Instead of 404, return a 200 with registered: false
+      return res.status(200).json({ registered: false });
     }
 
     res.status(200).json({ registered: true, message: 'Screen is registered.', screen: row });
   });
 });
-
-
 
 // Save Content for a Screen
 app.post('/save-content', (req, res) => {
@@ -169,8 +213,9 @@ app.post('/save-content', (req, res) => {
       screenId: screenId,
       data: data,
     };
-    wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
+    // Send the content update only to the client(s) with the matching screenId
+    clients.forEach((client, clientScreenId) => {
+      if (client.readyState === WebSocket.OPEN && clientScreenId === screenId) {
         client.send(JSON.stringify(contentUpdate));
       }
     });
@@ -263,6 +308,3 @@ app.delete('/delete-content/:id', (req, res) => {
     res.status(200).json({ message: 'Content deleted successfully.' });
   });
 });
-
-
-app.listen(port, () => console.log(`Server running on http://localhost:${port}`));
