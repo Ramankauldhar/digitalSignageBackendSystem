@@ -34,7 +34,6 @@ Ensure you have the following installed:
 4. Start the application:
 'node server.js`
 
-The app will run on http://localhost:3000.
 
 ## Database Structure
 
