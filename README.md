@@ -4,6 +4,8 @@ This is the backend for a Digital Signage Content Management System, built using
 
 Online 
 (https://digitalsignagebackendsystem.onrender.com/)
+
+
 (wss://digitalsignagebackendsystem.onrender.com/)
 
 ## Features: 
@@ -17,10 +19,10 @@ Online
 
 ## Tech Stack
 
-Backend: Node.js, Express.js
-Database: SQLite3
-WebSockets: ws for real-time communication
-Middleware: body-parser, cors
+- Backend: Node.js, Express.js
+- Database: SQLite3
+- WebSockets: ws for real-time communication
+- Middleware: body-parser, cors
 
 ## Installation
 ### Prerequisites
@@ -60,16 +62,16 @@ CREATE TABLE IF NOT EXISTS content (
 
 ### Screens
 #### Method	Endpoint	Description: 
-POST	/register-screen	:- Registers a new screen
-GET	/check-screen/:screenId	:- Checks if a screen is registered
+1. POST	/register-screen	:- Registers a new screen
+2. GET	/check-screen/:screenId	:- Checks if a screen is registered
+   
 ### Content
 #### Method	Endpoint	Description
-POST	/save-content	:- Saves content for a screen
-GET	/content/:screenId	:- Fetches all content for a specific screen
-GET	/contents	:- Fetches all content (for testing)
-PUT	/update-content/:id	:- Updates content for a specific screen
-DELETE	/delete-content/:id	:- Deletes content for a specific screen
-
+1. POST	/save-content	:- Saves content for a screen
+2. GET	/content/:screenId	:- Fetches all content for a specific screen
+3. GET	/contents	:- Fetches all content (for testing)
+4. PUT	/update-content/:id	:- Updates content for a specific screen
+5. DELETE	/delete-content/:id	:- Deletes content for a specific screen
 
 
 ## WebSocket Implementation
