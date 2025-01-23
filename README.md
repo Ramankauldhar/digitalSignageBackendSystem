@@ -1,6 +1,11 @@
 # Digital Signage Content Management System (Backend)
 
 This is the backend for a Digital Signage Content Management System, built using Node.js, Express, SQLite, and WebSockets. It enables real-time content updates, content storage, and management of digital display screens.
+
+Online 
+(https://digitalsignagebackendsystem.onrender.com/)
+(wss://digitalsignagebackendsystem.onrender.com/)
+
 ## Features: 
 
 1. RESTful API for managing screens and content
@@ -72,7 +77,7 @@ DELETE	/delete-content/:id	:- Deletes content for a specific screen
 ### WebSocket Connection
 1. The server listens for WebSocket connections.
 2. Each connected screen is identified by a screenId.
-3. 
+   
 ### Real-time Communication
 1. New Content: Broadcasts new content updates to relevant screens.
 2. Content Updates: Updates are pushed instantly to connected screens.
